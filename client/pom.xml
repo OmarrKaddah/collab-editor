@@ -23,6 +23,11 @@
             <artifactId>javafx-controls</artifactId>
             <version>21</version>
         </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-fxml</artifactId>
+            <version>21</version>
+        </dependency>
 
         <!-- Spring WebSocket + Messaging -->
         <dependency>
@@ -100,6 +105,20 @@
                 <target>17</target>
             </configuration>
         </plugin>
+
+        <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.0.8</version>
+                <configuration>
+                    <mainClass>client.Main</mainClass>
+                    <options>
+                        <option>--add-modules</option>
+                        <option>ALL-SYSTEM</option>
+                    </options>
+                </configuration>
+            </plugin>
+
     </plugins>
 </build>
 
