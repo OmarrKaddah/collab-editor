@@ -19,7 +19,6 @@ public class CRDTDocument {
         insertCharacter(newChar);
         return newChar;
     }
-    
 
     // ✅ External delete API for controller+
     public synchronized CRDTCharacter delete(String id) {
@@ -35,8 +34,7 @@ public class CRDTDocument {
             insertCharacter(message.getCharacter());
         } else if ("delete".equals(message.getType())) {
             deleteCharacter(message.getCharacter().getId());
-        }
-        else{
+        } else {
             System.out.println("Error message type: " + message.getType());
         }
     }
@@ -59,7 +57,8 @@ public class CRDTDocument {
 
     private void deleteCharacter(String id) {
         CRDTCharacter ch = idMap.get(id);
-        if (ch != null) ch.setVisible(false);
+        if (ch != null)
+            ch.setVisible(false);
     }
 
     public synchronized String getVisibleText() {
