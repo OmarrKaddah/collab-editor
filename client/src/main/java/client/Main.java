@@ -138,23 +138,55 @@ public class Main extends Application {
 
 private void sendInsert(char c) {
     int caretPos = textArea.getCaretPosition();
-    int insertIdx = Math.min(caretPos, localVisibleChars.size());
 
+    // Find the parent character based on visible text (not index)
     String parentId;
-    if (insertIdx == 0 || localVisibleChars.isEmpty()) {
+    if (caretPos == 0 || localVisibleChars.isEmpty()) {
         parentId = "HEAD";
     } else {
-        parentId = localVisibleChars.get(insertIdx - 1).getId();
+        // Get visible characters only
+        int visibleCount = 0;
+        for (CRDTCharacter ch : localVisibleChars) {
+            if (ch.isVisible()) visibleCount++;
+            if (visibleCount == caretPos) {
+                // We've reached the caretPos; previous visible is the parent
+                break;
+            }
+        }
+
+        // Get the (caretPos - 1)'th visible character as parent
+        visibleCount = 0;
+        parentId = "HEAD";
+        for (CRDTCharacter ch : localVisibleChars) {
+            if (ch.isVisible()) {
+                visibleCount++;
+                if (visibleCount == caretPos) {
+                    break;
+                }
+                parentId = ch.getId(); // this becomes the parent
+            }
+        }
     }
 
     String newId = generateUniqueId();
-    CRDTCharacter ch = new CRDTCharacter(c, newId, parentId, true);
-    localVisibleChars.add(insertIdx, ch);
+    CRDTCharacter newChar = new CRDTCharacter(c, newId, parentId, true);
 
-    CRDTMessage msg = new CRDTMessage("insert", ch);
+    // Find actual insert index in full localVisibleChars list (not visible ones)
+    int insertIdx = 0;
+    for (int i = 0; i < localVisibleChars.size(); i++) {
+        if (localVisibleChars.get(i).getId().equals(parentId)) {
+            insertIdx = i + 1;
+            break;
+        }
+    }
+
+    localVisibleChars.add(insertIdx, newChar);
+
+    CRDTMessage msg = new CRDTMessage("insert", newChar);
     sendMessage(msg);
-    //updateTextFromCRDT();
+    updateTextFromCRDT();
 }
+
 
 
 
