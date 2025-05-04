@@ -15,7 +15,7 @@ import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 import java.lang.reflect.Type;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class Main extends Application {
@@ -25,6 +25,8 @@ public class Main extends Application {
 
     private final String clientId = UUID.randomUUID().toString().substring(0, 6);
     private final AtomicLong lastTimestamp = new AtomicLong(0);
+
+    private final List<CRDTCharacter> localVisibleChars = new ArrayList<>();
 
     @Override
     public void start(Stage stage) {
@@ -41,10 +43,10 @@ public class Main extends Application {
 
         connectToServer();
 
-        // Handle key input
+        // Handle input
         textArea.setOnKeyTyped(event -> {
             String typed = event.getCharacter();
-            event.consume(); // Block direct insertion
+            event.consume();
 
             if ("\b".equals(typed)) {
                 sendDelete();
@@ -93,31 +95,78 @@ public class Main extends Application {
     }
 
     private void applyServerUpdate(CRDTMessage msg) {
+        CRDTCharacter ch = msg.getCharacter();
+    
         if ("insert".equals(msg.getType())) {
-            textArea.appendText(String.valueOf(msg.getCharacter().getValue()));
-        } else if ("delete".equals(msg.getType())) {
-            String current = textArea.getText();
-            if (!current.isEmpty()) {
-                textArea.setText(current.substring(0, current.length() - 1));
-                textArea.positionCaret(textArea.getText().length());
+            for (CRDTCharacter existing : localVisibleChars) {
+                if (existing.getId().equals(ch.getId())) return; // avoid duplicates
             }
+    
+            // ✅ Find parent index
+            int insertIdx = 0;
+            for (int i = 0; i < localVisibleChars.size(); i++) {
+                if (localVisibleChars.get(i).getId().equals(ch.getParentId())) {
+                    insertIdx = i + 1;
+                    break;
+                }
+            }
+    
+            // ✅ Insert right after parent
+            localVisibleChars.add(insertIdx, ch);
+    
+        } else if ("delete".equals(msg.getType())) {
+            localVisibleChars.removeIf(c -> c.getId().equals(ch.getId()));
+        }
+    
+        updateTextFromCRDT();
+    }
+    
+    
+
+
+   private void updateTextFromCRDT() {
+    StringBuilder sb = new StringBuilder();
+    for (CRDTCharacter ch : localVisibleChars) {
+        if (ch.isVisible()) {
+            sb.append(ch.getValue());
         }
     }
+    textArea.setText(sb.toString());
+    textArea.positionCaret(localVisibleChars.size()); // ✅ move caret to end
+}
 
-    private void sendInsert(char c) {
-        String id = generateUniqueId();
-        String prevId = "DUMMY"; // placeholder, server handles real CRDT logic
 
-        CRDTCharacter ch = new CRDTCharacter(c, id, prevId, true);
-        CRDTMessage msg = new CRDTMessage("insert", ch);
-        sendMessage(msg);
+private void sendInsert(char c) {
+    int caretPos = textArea.getCaretPosition();
+    int insertIdx = Math.min(caretPos, localVisibleChars.size());
+
+    String parentId;
+    if (insertIdx == 0 || localVisibleChars.isEmpty()) {
+        parentId = "HEAD";
+    } else {
+        parentId = localVisibleChars.get(insertIdx - 1).getId();
     }
 
+    String newId = generateUniqueId();
+    CRDTCharacter ch = new CRDTCharacter(c, newId, parentId, true);
+    localVisibleChars.add(insertIdx, ch);
+
+    CRDTMessage msg = new CRDTMessage("insert", ch);
+    sendMessage(msg);
+    //updateTextFromCRDT();
+}
+
+
+
     private void sendDelete() {
-        String lastCharId = "UNKNOWN"; // client doesn’t track character tree
-        CRDTCharacter ch = new CRDTCharacter('\0', lastCharId, null, false);
-        CRDTMessage msg = new CRDTMessage("delete", ch);
+        int caretPos = textArea.getCaretPosition();
+        if (caretPos == 0 || caretPos > localVisibleChars.size()) return;
+
+        CRDTCharacter ch = localVisibleChars.remove(caretPos - 1);
+        CRDTCharacter deleteChar = new CRDTCharacter('\0', ch.getId(), null, false);
+        CRDTMessage msg = new CRDTMessage("delete", deleteChar);
         sendMessage(msg);
+        updateTextFromCRDT();
     }
 
     private String generateUniqueId() {

@@ -28,12 +28,16 @@ public class MessageController {
             switch (incoming.getType()) {
                 case "insert" -> {
                     // Insert the character as-is (ID & parentId are provided by client)
+                    System.out.println("Insert in controller: " + character.getValue() + " after " + character.getParentId());
                     CRDTCharacter inserted = crdtDocument.insert(character);
                     return new CRDTMessage("insert", inserted);
                 }
                 case "delete" -> {
+                    
                     CRDTCharacter deleted = crdtDocument.delete(character.getId());
+                    
                     if (deleted != null) {
+                        System.out.println("Delete in controller: " );
                         return new CRDTMessage("delete", deleted);
                     } else {
                         return new CRDTMessage("error", null);

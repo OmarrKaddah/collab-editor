@@ -15,7 +15,7 @@ public class CRDTDocument {
     }
 
     public synchronized CRDTCharacter insert(CRDTCharacter newChar) {
-        // if (idMap.containsKey(newChar.getId())) return null; // already exists
+        if (idMap.containsKey(newChar.getId())) return null; // already exists
         insertCharacter(newChar);
         return newChar;
     }
@@ -23,8 +23,14 @@ public class CRDTDocument {
 
     // ✅ External delete API for controller+
     public synchronized CRDTCharacter delete(String id) {
+       
         CRDTCharacter ch = idMap.get(id);
+        if (ch == null) {
+            System.out.println("Character not found: " + id);
+            return null; // not found
+         } // not found
         if (ch != null) {
+            System.out.println("Delete in document: " + ch.getValue() + " with id " + ch.getId());
             ch.setVisible(false);
         }
         return ch;
@@ -40,11 +46,16 @@ public class CRDTDocument {
             System.out.println("Error message type: " + message.getType());
         }
     }
+   
 
     private void insertCharacter(CRDTCharacter newChar) {
-        // if (idMap.containsKey(newChar.getId())) return;
+        if (idMap.containsKey(newChar.getId())) return;
+        //parent id gaya men el client dummy
 
+        System.out.println("Insert in document: " + newChar.getValue() + " after " + newChar.getParentId());
         String parentId = newChar.getParentId();
+        System.out.println("character ID: " + newChar.getId());
+        System.out.println("Parent ID: " + parentId);
         tree.putIfAbsent(parentId, new ArrayList<>());
 
         List<CRDTCharacter> siblings = tree.get(parentId);
@@ -65,6 +76,8 @@ public class CRDTDocument {
     public synchronized String getVisibleText() {
         StringBuilder sb = new StringBuilder();
         dfsBuildText("HEAD", sb);
+        System.out.println();
+        System.out.println("Visible text: " + sb.toString());
         return sb.toString();
     }
 
