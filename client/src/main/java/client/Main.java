@@ -22,6 +22,8 @@ public class Main extends Application {
 
     private StompSession stompSession;
     private TextArea textArea;
+    private String lastOperationType = "remote"; // or "none"
+
 
     private final String clientId = UUID.randomUUID().toString().substring(0, 6);
     private final AtomicLong lastTimestamp = new AtomicLong(0);
@@ -117,23 +119,52 @@ public class Main extends Application {
         } else if ("delete".equals(msg.getType())) {
             localVisibleChars.removeIf(c -> c.getId().equals(ch.getId()));
         }
-    
+        lastOperationType = "remote";
         updateTextFromCRDT();
     }
     
     
 
 
-   private void updateTextFromCRDT() {
-    StringBuilder sb = new StringBuilder();
-    for (CRDTCharacter ch : localVisibleChars) {
-        if (ch.isVisible()) {
-            sb.append(ch.getValue());
+    private void updateTextFromCRDT() {
+        int oldCaretPos = textArea.getCaretPosition();
+    
+        // Count how many visible characters existed before caret
+        int visibleCaretAnchor = 0;
+        int visibleIndex = 0;
+    
+        for (CRDTCharacter ch : localVisibleChars) {
+            if (ch.isVisible()) {
+                if (visibleIndex == oldCaretPos) break;
+                visibleCaretAnchor++;
+                visibleIndex++;
+            }
         }
+    
+        // Rebuild visible text
+        StringBuilder sb = new StringBuilder();
+        for (CRDTCharacter ch : localVisibleChars) {
+            if (ch.isVisible()) {
+                sb.append(ch.getValue());
+            }
+        }
+    
+        textArea.setText(sb.toString());
+    
+        int newCaretPos = visibleCaretAnchor;
+    
+        switch (lastOperationType) {
+            case "insert" -> newCaretPos = Math.min(visibleCaretAnchor , sb.length());
+            case "delete" -> newCaretPos = Math.max(visibleCaretAnchor, 0);
+            case "remote" -> newCaretPos = Math.min(visibleCaretAnchor, sb.length());
+        }
+    
+        textArea.positionCaret(newCaretPos);
+        lastOperationType = "none";
     }
-    textArea.setText(sb.toString());
-    textArea.positionCaret(localVisibleChars.size()); // ✅ move caret to end
-}
+    
+    
+
 
 
 private void sendInsert(char c) {
@@ -184,6 +215,7 @@ private void sendInsert(char c) {
 
     CRDTMessage msg = new CRDTMessage("insert", newChar);
     sendMessage(msg);
+    lastOperationType = "insert";
     updateTextFromCRDT();
 }
 
@@ -198,6 +230,7 @@ private void sendInsert(char c) {
         CRDTCharacter deleteChar = new CRDTCharacter('\0', ch.getId(), null, false);
         CRDTMessage msg = new CRDTMessage("delete", deleteChar);
         sendMessage(msg);
+        lastOperationType = "delete";
         updateTextFromCRDT();
     }
 
