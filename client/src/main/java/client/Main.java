@@ -304,9 +304,11 @@ private void sendInsert(char c) {
 
     private void sendDelete() {
         int caretPos = textArea.getCaretPosition();
-        if (caretPos == 0 || caretPos > localVisibleChars.size()) return;
+        if ( caretPos > localVisibleChars.size()) return;
 
-        CRDTCharacter ch = localVisibleChars.remove(caretPos - 1);
+        CRDTCharacter ch = localVisibleChars.remove(caretPos);
+        System.out.println("caretPos: " + caretPos);
+        System.out.println("Deleting character: " + ch.getValue() + " with id " + ch.getId());
         CRDTCharacter deleteChar = new CRDTCharacter('\0', ch.getId(), null, false);
         CRDTMessage msg = new CRDTMessage("delete", deleteChar);
         sendMessage(msg);
