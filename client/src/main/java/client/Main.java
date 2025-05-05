@@ -15,11 +15,15 @@ import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 
 import javafx.util.Duration;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import org.springframework.messaging.converter.MappingJackson2MessageConverter;
 import org.springframework.messaging.simp.stomp.*;
 import org.springframework.util.concurrent.ListenableFuture;
@@ -27,7 +31,7 @@ import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 import java.lang.reflect.Type;
-import javafx.util.Duration;
+
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -94,6 +98,50 @@ public class Main extends Application {
             showEditorScreen(stage);
         });
 
+        // New Import Button
+        Button importButton = new Button("Import Text File");
+        importButton.setOnAction(e -> {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Open Text File");
+            fileChooser.getExtensionFilters().add(
+                    new FileChooser.ExtensionFilter("Text Files", "*.txt"));
+            File selectedFile = fileChooser.showOpenDialog(stage);
+
+            if (selectedFile != null) {
+                try {
+                    String content = new String(Files.readAllBytes(selectedFile.toPath()));
+                    documentId = generateDocumentId();
+                    showEditorScreen(stage);
+
+                    // After editor screen is shown, insert the file content properly
+                    Platform.runLater(() -> {
+                        // Clear any existing content
+                        localVisibleChars.clear();
+                        updateTextFromCRDT();
+
+                        // Insert all characters with proper parent references
+                        String parentId = "HEAD";
+                        for (char c : content.toCharArray()) {
+                            if (c >= 32) { // Only insert printable characters
+                                String newId = generateUniqueId();
+                                CRDTCharacter newChar = new CRDTCharacter(c, newId, parentId, true);
+                                localVisibleChars.add(newChar);
+                                parentId = newId; // Set next parent to current character
+
+                                // Send insert message to server
+                                CRDTMessage msg = new CRDTMessage("insert", newChar);
+                                sendMessage(msg);
+                            }
+                        }
+                        lastOperationType = "remote";
+                        updateTextFromCRDT();
+                    });
+                } catch (IOException ex) {
+                    showError("Failed to read file: " + ex.getMessage());
+                }
+            }
+        });
+
         Button joinButton = new Button("Join Existing Document");
         TextField docIdField = new TextField();
         docIdField.setPromptText("Enter 5-digit Document ID with V/E suffix");
@@ -112,7 +160,7 @@ public class Main extends Application {
             }
         });
 
-        selectionScreen.getChildren().addAll(title, createButton, docIdField, joinButton);
+        selectionScreen.getChildren().addAll(title, createButton, importButton, docIdField, joinButton);
         selectionScreen.setStyle("-fx-padding: 20; -fx-alignment: center;");
 
         Scene selectionScene = new Scene(selectionScreen, 400, 300);
