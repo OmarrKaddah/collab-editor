@@ -6,6 +6,8 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.TextArea;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import org.springframework.messaging.converter.MappingJackson2MessageConverter;
@@ -24,6 +26,10 @@ public class Main extends Application {
     private TextArea textArea;
     private String lastOperationType = "remote"; // or "none"
     
+    // Undo/Redo stacks
+    private final Deque<CRDTMessage> undoStack = new ArrayDeque<>();
+    private final Deque<CRDTMessage> redoStack = new ArrayDeque<>();
+    private boolean isUndoRedoInProgress = false;
 
     private final String clientId = UUID.randomUUID().toString().substring(0, 6);
     private final AtomicLong lastTimestamp = new AtomicLong(0);
@@ -37,8 +43,6 @@ public class Main extends Application {
         textArea.setWrapText(true);
         textArea.setEditable(true);
 
-        
-
         VBox root = new VBox(textArea);
         Scene scene = new Scene(root, 600, 400);
         stage.setTitle("Collaborative Editor (" + clientId + ")");
@@ -49,6 +53,11 @@ public class Main extends Application {
 
         // Handle input
         textArea.setOnKeyTyped(event -> {
+            if (isUndoRedoInProgress) {
+                event.consume();
+                return;
+            }
+            
             String typed = event.getCharacter();
             event.consume();
         
@@ -61,21 +70,44 @@ public class Main extends Application {
             }
         });
         
+        // Handle Ctrl+V for paste and Ctrl+Z/Y for undo/redo
+        textArea.setOnKeyPressed(event -> handleKeyPress(event));
         
-        // ➕ ADD this block for paste handling
-        textArea.setOnKeyPressed(event -> {
-            if (event.isControlDown() && event.getCode().toString().equals("V")) {
-                System.out.println("Ctrl+V pressed");
-                String pastedText = getClipboardText();
-                if (pastedText != null) {
-                    int caretPos = textArea.getCaretPosition();
-                    pasteTextAtCaret(pastedText, caretPos);
-                    event.consume(); // prevent default pasting
-                }
-            }
-        });
-
         Platform.runLater(() -> textArea.requestFocus());
+    }
+
+    private void handleKeyPress(KeyEvent event) {
+        if (isUndoRedoInProgress) {
+            event.consume();
+            return;
+        }
+        
+        if (event.isControlDown()) {
+            switch (event.getCode()) {
+                case V:
+                    handlePaste();
+                    event.consume();
+                    break;
+                case Z:
+                    if (!event.isShiftDown()) {
+                        undo();
+                        event.consume();
+                    }
+                    break;
+                case Y:
+                    redo();
+                    event.consume();
+                    break;
+            }
+        }
+    }
+
+    private void handlePaste() {
+        String pastedText = getClipboardText();
+        if (pastedText != null && !pastedText.isEmpty()) {
+            int caretPos = textArea.getCaretPosition();
+            pasteTextAtCaret(pastedText, caretPos);
+        }
     }
 
     private void connectToServer() {
@@ -138,118 +170,133 @@ public class Main extends Application {
         return "HEAD";
     }
     
-
-    
-    
-    
-private void pasteTextAtCaret(String pastedText, int caretPos) {
-    // 👇 Use current state to find correct parent BEFORE inserting anything
-    String parentId = getParentIdFromVisibleCaret(caretPos - 1); 
-
-    for (char c : pastedText.toCharArray()) {
-        if (c < 32 && c != '\n') continue;
-        try {
-            Thread.sleep(10); // Simulate network delay
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt(); // Restore interrupted status
-            e.printStackTrace();
+    private void pasteTextAtCaret(String pastedText, int caretPos) {
+        String parentId = getParentIdFromVisibleCaret(caretPos - 1); 
+        List<CRDTMessage> pasteOperations = new ArrayList<>();
+        
+        for (char c : pastedText.toCharArray()) {
+            if (c < 32 && c != '\n') continue;
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                e.printStackTrace();
+            }
+            parentId = sendInsertAt(c, parentId, pasteOperations);
         }
-        parentId = sendInsertAt(c, parentId); // parentId gets updated each time
+
+        if (!pasteOperations.isEmpty()) {
+            CRDTMessage batchMsg = new CRDTMessage("batch", null);
+            batchMsg.setBatchOperations(pasteOperations);
+            undoStack.push(batchMsg);
+            redoStack.clear();
+        }
+        
+        lastOperationType = "insert";
+        updateTextFromCRDT();
+    }
+    
+    private String sendInsertAt(char c, String parentId, List<CRDTMessage> operationList) {
+        String newId = generateUniqueId();
+        CRDTCharacter newChar = new CRDTCharacter(c, newId, parentId, true);
+
+        int insertIdx = findInsertIndex(parentId);
+        localVisibleChars.add(insertIdx, newChar);
+        
+        CRDTMessage msg = new CRDTMessage("insert", newChar);
+        sendMessage(msg);
+        
+        if (operationList != null) {
+            operationList.add(msg);
+        } else {
+            undoStack.push(msg);
+            redoStack.clear();
+        }
+        
+        return newId;
     }
 
-    lastOperationType = "insert";
-    updateTextFromCRDT();
-}
-private String sendInsertAt(char c, String parentId) {
-    String newId = generateUniqueId();
-    CRDTCharacter newChar = new CRDTCharacter(c, newId, parentId, true);
-
-    // Find insert position right after parent
-    int insertIdx = 0;
-    for (int i = 0; i < localVisibleChars.size(); i++) {
-        if (localVisibleChars.get(i).getId().equals(parentId)) {
-            insertIdx = i + 1;
-            break;
+    private int findInsertIndex(String parentId) {
+        for (int i = 0; i < localVisibleChars.size(); i++) {
+            if (localVisibleChars.get(i).getId().equals(parentId)) {
+                return i + 1;
+            }
         }
+        return localVisibleChars.size();
     }
-
-    localVisibleChars.add(insertIdx, newChar);
-    sendMessage(new CRDTMessage("insert", newChar));
-    return newId; // becomes parent for the next char
-}
-
-    
-    
-    
-    
-    
 
     private void applyServerUpdate(CRDTMessage msg) {
+        if (isUndoRedoInProgress || msg == null) return;
+        
         CRDTCharacter ch = msg.getCharacter();
+        if (ch == null) return;
     
         if ("insert".equals(msg.getType())) {
-            for (CRDTCharacter existing : localVisibleChars) {
-                if (existing.getId().equals(ch.getId())) return; // avoid duplicates
-            }
-    
-            // ✅ Find parent index
-            int insertIdx = 0;
-            for (int i = 0; i < localVisibleChars.size(); i++) {
-                if (localVisibleChars.get(i).getId().equals(ch.getParentId())) {
-                    insertIdx = i + 1;
-                    break;
-                }
-            }
-    
-            // ✅ Insert right after parent
-            localVisibleChars.add(insertIdx, ch);
-    
+            handleInsertOperation(ch);
         } else if ("delete".equals(msg.getType())) {
-            localVisibleChars.removeIf(c -> c.getId().equals(ch.getId()));
+            handleDeleteOperation(ch);
         }
+        
         lastOperationType = "remote";
         updateTextFromCRDT();
     }
     
-    
+    private void handleInsertOperation(CRDTCharacter ch) {
+        // Check for duplicates
+        for (CRDTCharacter existing : localVisibleChars) {
+            if (existing.getId().equals(ch.getId())) return;
+        }
 
+        int insertIdx = findInsertIndex(ch.getParentId());
+        localVisibleChars.add(insertIdx, ch);
+    }
+    
+    private void handleDeleteOperation(CRDTCharacter ch) {
+        localVisibleChars.removeIf(c -> c.getId().equals(ch.getId()));
+    }
 
     private void updateTextFromCRDT() {
         int oldCaretPos = textArea.getCaretPosition();
+        int visibleCaretAnchor = calculateVisibleCaretPosition(oldCaretPos);
+        
+        String visibleText = buildVisibleText();
+        textArea.setText(visibleText);
+        
+        int newCaretPos = calculateNewCaretPosition(visibleCaretAnchor, visibleText.length());
+        textArea.positionCaret(newCaretPos);
+        
+        lastOperationType = "none";
+        printVisibleCRDTState();
+    }
     
-        // Count how many visible characters existed before caret
-        int visibleCaretAnchor = 0;
-        int visibleIndex = 0;
-    
+    private int calculateVisibleCaretPosition(int oldPos) {
+        int visibleCount = 0;
         for (CRDTCharacter ch : localVisibleChars) {
             if (ch.isVisible()) {
-                if (visibleIndex == oldCaretPos) break;
-                visibleCaretAnchor++;
-                visibleIndex++;
+                if (visibleCount == oldPos) break;
+                visibleCount++;
             }
         }
+        return visibleCount;
+    }
     
-        // Rebuild visible text
+    private String buildVisibleText() {
         StringBuilder sb = new StringBuilder();
         for (CRDTCharacter ch : localVisibleChars) {
             if (ch.isVisible()) {
                 sb.append(ch.getValue());
             }
         }
+        return sb.toString();
+    }
     
-        textArea.setText(sb.toString());
-    
-        int newCaretPos = visibleCaretAnchor;
-    
+    private int calculateNewCaretPosition(int anchor, int textLength) {
         switch (lastOperationType) {
-            case "insert" -> newCaretPos = Math.min(visibleCaretAnchor , sb.length());
-            case "delete" -> newCaretPos = Math.max(visibleCaretAnchor, 0);
-            case "remote" -> newCaretPos = Math.min(visibleCaretAnchor, sb.length());
+            case "insert": return Math.min(anchor, textLength);
+            case "delete": return Math.max(anchor, 0);
+            case "remote": return Math.min(anchor, textLength);
+            default: return anchor;
         }
-    
-        textArea.positionCaret(newCaretPos);
-        lastOperationType = "none";
-        printVisibleCRDTState();
     }
         
     private void printVisibleCRDTState() {
@@ -264,77 +311,184 @@ private String sendInsertAt(char c, String parentId) {
         System.out.println("---");
     }
     
-    
+    private void sendInsert(char c) {
+        int caretPos = textArea.getCaretPosition();
+        String parentId = findParentIdForInsert(caretPos);
+        
+        String newId = generateUniqueId();
+        CRDTCharacter newChar = new CRDTCharacter(c, newId, parentId, true);
 
+        int insertIdx = findInsertIndex(parentId);
+        localVisibleChars.add(insertIdx, newChar);
 
+        CRDTMessage msg = new CRDTMessage("insert", newChar);
+        sendMessage(msg);
+        undoStack.push(msg);
+        redoStack.clear();
+        lastOperationType = "insert";
+        updateTextFromCRDT();
+    }
 
-private void sendInsert(char c) {
-    int caretPos = textArea.getCaretPosition();
-
-    // Find the parent character based on visible text (not index)
-    String parentId;
-    if (caretPos == 0 || localVisibleChars.isEmpty()) {
-        parentId = "HEAD";
-    } else {
-        // Get visible characters only
+    private String findParentIdForInsert(int caretPos) {
+        if (caretPos == 0 || localVisibleChars.isEmpty()) return "HEAD";
+        
         int visibleCount = 0;
-        for (CRDTCharacter ch : localVisibleChars) {
-            if (ch.isVisible()) visibleCount++;
-            if (visibleCount == caretPos) {
-                // We've reached the caretPos; previous visible is the parent
-                break;
-            }
-        }
-
-        // Get the (caretPos - 1)'th visible character as parent
-        visibleCount = 0;
-        parentId = "HEAD";
+        String parentId = "HEAD";
+        
         for (CRDTCharacter ch : localVisibleChars) {
             if (ch.isVisible()) {
                 visibleCount++;
+                if (visibleCount == caretPos) break;
+                parentId = ch.getId();
+            }
+        }
+        
+        return parentId;
+    }
+
+    private void sendDelete() {
+        int caretPos = textArea.getCaretPosition();
+        CRDTCharacter toDelete = findCharacterAtPosition(caretPos);
+        if (toDelete == null) return;
+
+        int deleteIndex = localVisibleChars.indexOf(toDelete);
+        localVisibleChars.remove(deleteIndex);
+        
+        CRDTCharacter deleteChar = new CRDTCharacter('\0', toDelete.getId(), null, false);
+        CRDTMessage msg = new CRDTMessage("delete", deleteChar);
+        sendMessage(msg);
+        undoStack.push(msg);
+        redoStack.clear();
+        lastOperationType = "delete";
+        updateTextFromCRDT();
+    }
+
+    private CRDTCharacter findCharacterAtPosition(int caretPos) {
+        int visibleCount = 0;
+        for (CRDTCharacter ch : localVisibleChars) {
+            if (ch.isVisible()) {
                 if (visibleCount == caretPos) {
-                    break;
+                    return ch;
                 }
-                parentId = ch.getId(); // this becomes the parent
+                visibleCount++;
+            }
+        }
+        return null;
+    }
+
+    private void undo() {
+        if (undoStack.isEmpty()) return;
+        
+        isUndoRedoInProgress = true;
+        try {
+            CRDTMessage lastAction = undoStack.pop();
+            
+            if ("batch".equals(lastAction.getType())) {
+                undoBatchOperation(lastAction);
+            } else {
+                undoSingleOperation(lastAction);
+            }
+            
+            updateTextFromCRDT();
+        } finally {
+            isUndoRedoInProgress = false;
+        }
+    }
+
+    private void undoBatchOperation(CRDTMessage batch) {
+        List<CRDTMessage> operations = batch.getBatchOperations();
+        if (operations != null) {
+            for (int i = operations.size() - 1; i >= 0; i--) {
+                CRDTMessage msg = operations.get(i);
+                if (msg != null) {
+                    CRDTMessage inverse = createInverseOperation(msg);
+                    applyLocalOperation(inverse);
+                    redoStack.push(msg);
+                }
             }
         }
     }
 
-    String newId = generateUniqueId();
-    CRDTCharacter newChar = new CRDTCharacter(c, newId, parentId, true);
+    private void undoSingleOperation(CRDTMessage msg) {
+        CRDTMessage inverse = createInverseOperation(msg);
+        applyLocalOperation(inverse);
+        redoStack.push(msg);
+    }
 
-    // Find actual insert index in full localVisibleChars list (not visible ones)
-    int insertIdx = 0;
-    for (int i = 0; i < localVisibleChars.size(); i++) {
-        if (localVisibleChars.get(i).getId().equals(parentId)) {
-            insertIdx = i + 1;
-            break;
+    private void redo() {
+        if (redoStack.isEmpty()) return;
+        
+        isUndoRedoInProgress = true;
+        try {
+            CRDTMessage lastUndone = redoStack.pop();
+            
+            if ("batch".equals(lastUndone.getType())) {
+                redoBatchOperation(lastUndone);
+            } else {
+                redoSingleOperation(lastUndone);
+            }
+            
+            updateTextFromCRDT();
+        } finally {
+            isUndoRedoInProgress = false;
         }
     }
 
-    localVisibleChars.add(insertIdx, newChar);
+    private void redoBatchOperation(CRDTMessage batch) {
+        List<CRDTMessage> operations = batch.getBatchOperations();
+        if (operations != null) {
+            for (CRDTMessage msg : operations) {
+                if (msg != null) {
+                    applyLocalOperation(msg);
+                    undoStack.push(msg);
+                }
+            }
+        }
+    }
 
-    CRDTMessage msg = new CRDTMessage("insert", newChar);
-    sendMessage(msg);
-    lastOperationType = "insert";
-    updateTextFromCRDT();
-}
+    private void redoSingleOperation(CRDTMessage msg) {
+        applyLocalOperation(msg);
+        undoStack.push(msg);
+    }
 
+    private CRDTMessage createInverseOperation(CRDTMessage original) {
+        if (original == null || original.getCharacter() == null) return null;
+        
+        if ("insert".equals(original.getType())) {
+            CRDTCharacter ch = original.getCharacter();
+            return new CRDTMessage("delete", new CRDTCharacter('\0', ch.getId(), null, false));
+        } else if ("delete".equals(original.getType())) {
+            CRDTCharacter ch = original.getCharacter();
+            // We need to restore the original character properties
+            CRDTCharacter originalChar = findOriginalCharacter(ch.getId());
+            if (originalChar != null) {
+                return new CRDTMessage("insert", originalChar);
+            }
+        }
+        return null;
+    }
 
+    private CRDTCharacter findOriginalCharacter(String id) {
+        for (CRDTCharacter ch : localVisibleChars) {
+            if (ch.getId().equals(id)) {
+                return new CRDTCharacter(ch.getValue(), ch.getId(), ch.getParentId(), true);
+            }
+        }
+        return null;
+    }
 
-
-    private void sendDelete() {
-        int caretPos = textArea.getCaretPosition();
-        if ( caretPos > localVisibleChars.size()) return;
-
-        CRDTCharacter ch = localVisibleChars.remove(caretPos);
-        System.out.println("caretPos: " + caretPos);
-        System.out.println("Deleting character: " + ch.getValue() + " with id " + ch.getId());
-        CRDTCharacter deleteChar = new CRDTCharacter('\0', ch.getId(), null, false);
-        CRDTMessage msg = new CRDTMessage("delete", deleteChar);
-        sendMessage(msg);
-        lastOperationType = "delete";
-        updateTextFromCRDT();
+    private void applyLocalOperation(CRDTMessage msg) {
+        if (msg == null || msg.getCharacter() == null) return;
+        
+        CRDTCharacter ch = msg.getCharacter();
+        if ("insert".equals(msg.getType())) {
+            int insertIdx = findInsertIndex(ch.getParentId());
+            localVisibleChars.add(insertIdx, ch);
+            sendMessage(msg);
+        } else if ("delete".equals(msg.getType())) {
+            localVisibleChars.removeIf(c -> c.getId().equals(ch.getId()));
+            sendMessage(msg);
+        }
     }
 
     private String generateUniqueId() {
@@ -348,7 +502,7 @@ private void sendInsert(char c) {
     }
 
     private void sendMessage(CRDTMessage msg) {
-        if (stompSession != null && stompSession.isConnected()) {
+        if (stompSession != null && stompSession.isConnected() && msg != null) {
             stompSession.send("/app/edit", msg);
         }
     }
