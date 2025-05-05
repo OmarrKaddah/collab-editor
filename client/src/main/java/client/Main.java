@@ -56,7 +56,6 @@ public class Main extends Application {
     private final Deque<CRDTMessage> redoStack = new ArrayDeque<>();
     private boolean isUndoRedoInProgress = false;
 
-    private final String clientId = UUID.randomUUID().toString().substring(0, 6);
     private final AtomicLong lastTimestamp = new AtomicLong(0);
 
     private final List<CRDTCharacter> localVisibleChars = new ArrayList<>();
