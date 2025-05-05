@@ -54,10 +54,13 @@ public class Main extends Application {
         
             if ("\b".equals(typed)) {
                 sendDelete();
+            } else if (typed.equals("\r") || typed.equals("\n")) {
+                sendInsert('\n');
             } else if (typed.length() > 0 && typed.charAt(0) >= 32) {
                 sendInsert(typed.charAt(0));
             }
         });
+        
         
         // ➕ ADD this block for paste handling
         textArea.setOnKeyPressed(event -> {
@@ -246,6 +249,19 @@ private String sendInsertAt(char c, String parentId) {
     
         textArea.positionCaret(newCaretPos);
         lastOperationType = "none";
+        printVisibleCRDTState();
+    }
+        
+    private void printVisibleCRDTState() {
+        System.out.println("📜 Visible CRDT Content:");
+        int i = 0;
+        for (CRDTCharacter ch : localVisibleChars) {
+            if (ch.isVisible()) {
+                String value = ch.getValue() == '\n' ? "\\n" : String.valueOf(ch.getValue());
+                System.out.printf("[%02d] '%s' (id=%s, parent=%s)\n", i++, value, ch.getId(), ch.getParentId());
+            }
+        }
+        System.out.println("---");
     }
     
     
