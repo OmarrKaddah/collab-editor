@@ -231,6 +231,19 @@ public class Main extends Application {
             }
         });
 
+        // ➕ ADD this block for paste handling
+        textArea.setOnKeyPressed(event -> {
+            if (event.isControlDown() && event.getCode().toString().equals("V")) {
+                System.out.println("Ctrl+V pressed");
+                String pastedText = getClipboardText();
+                if (pastedText != null) {
+                    int caretPos = textArea.getCaretPosition();
+                    pasteTextAtCaret(pastedText, caretPos);
+                    event.consume(); // prevent default pasting
+                }
+            }
+        });
+
         Platform.runLater(() -> textArea.requestFocus());
     }
 
@@ -312,6 +325,66 @@ public class Main extends Application {
         future.addCallback(
                 result -> System.out.println("✅ Connected to server. Document ID: " + documentId),
                 ex -> System.err.println("❌ Failed to connect: " + ex.getMessage()));
+    }
+
+    private String getClipboardText() {
+        return javafx.scene.input.Clipboard.getSystemClipboard().getString();
+    }
+
+    private String getParentIdFromVisibleCaret(int targetIndex) {
+        if (targetIndex < 0)
+            return "HEAD";
+
+        int visibleIdx = 0;
+        for (CRDTCharacter ch : localVisibleChars) {
+            if (!ch.isVisible())
+                continue;
+            if (visibleIdx == targetIndex)
+                return ch.getId();
+            visibleIdx++;
+        }
+
+        // Fallback to last visible char
+        for (int i = localVisibleChars.size() - 1; i >= 0; i--) {
+            if (localVisibleChars.get(i).isVisible()) {
+                return localVisibleChars.get(i).getId();
+            }
+        }
+
+        return "HEAD";
+    }
+
+    private void pasteTextAtCaret(String pastedText, int caretPos) {
+        // 👇 Use current state to find correct parent BEFORE inserting anything
+        String parentId = getParentIdFromVisibleCaret(caretPos - 1);
+
+        for (char c : pastedText.toCharArray()) {
+            if (c < 32 && c != '\n')
+                continue;
+
+            parentId = sendInsertAt(c, parentId); // parentId gets updated each time
+        }
+
+        lastOperationType = "insert";
+        updateTextFromCRDT();
+    }
+
+    private String sendInsertAt(char c, String parentId) {
+        String newId = generateUniqueId();
+        CRDTCharacter newChar = new CRDTCharacter(c, newId, parentId, true);
+
+        // Find insert position right after parent
+        int insertIdx = 0;
+        for (int i = 0; i < localVisibleChars.size(); i++) {
+            if (localVisibleChars.get(i).getId().equals(parentId)) {
+                insertIdx = i + 1;
+                break;
+            }
+        }
+
+        localVisibleChars.add(insertIdx, newChar);
+        sendMessage(new CRDTMessage("insert", newChar));
+        return newId; // becomes parent for the next char
     }
 
     private void applyServerUpdate(CRDTMessage msg) {
@@ -435,10 +508,12 @@ public class Main extends Application {
 
     private void sendDelete() {
         int caretPos = textArea.getCaretPosition();
-        if (caretPos == 0 || caretPos > localVisibleChars.size())
+        if (caretPos > localVisibleChars.size())
             return;
 
-        CRDTCharacter ch = localVisibleChars.remove(caretPos - 1);
+        CRDTCharacter ch = localVisibleChars.remove(caretPos);
+        System.out.println("caretPos: " + caretPos);
+        System.out.println("Deleting character: " + ch.getValue() + " with id " + ch.getId());
         CRDTCharacter deleteChar = new CRDTCharacter('\0', ch.getId(), null, false);
         CRDTMessage msg = new CRDTMessage("delete", deleteChar);
         sendMessage(msg);
