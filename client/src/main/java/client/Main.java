@@ -152,7 +152,7 @@ public class Main extends Application {
                         updateTextFromCRDT();
 
                         for (char c : content.toCharArray()) {
-                            if (c >= 32) { // Only insert printable characters
+                            if (c >= 32 || c == '\n') { // Only insert printable characters
                                 if (importedParenId == null) {
                                     importedParenId = "HEAD"; // First character has no parent
                                 } else {
