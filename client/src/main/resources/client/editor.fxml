@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/11.0.1" 
+           xmlns:fx="http://javafx.com/fxml/1" 
+           fx:controller="client.controller.EditorController">
+    <left>
+        <VBox spacing="20" style="-fx-padding: 20; -fx-background-color: #f0f0f0; -fx-min-width: 200;">
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Button fx:id="undoButton" text="↩" style="-fx-font-size: 16; -fx-min-width: 40;" onAction="#handleUndo"/>
+                <Button fx:id="redoButton" text="↪" style="-fx-font-size: 16; -fx-min-width: 40;" onAction="#handleRedo"/>
+                <Button fx:id="exportButton" text="Export" style="-fx-min-width: 80;" onAction="#handleExport"/>
+            </HBox>
+
+            <VBox spacing="5">
+                <Label text="Viewer Code" style="-fx-font-weight: bold;"/>
+                <HBox spacing="5" alignment="CENTER_LEFT">
+                    <Label fx:id="viewerCodeLabel" style="-fx-font-family: monospace; -fx-font-weight: bold;"/>
+                    <Button fx:id="copyViewerButton" text="Copy" onAction="#handleCopyViewerCode"/>
+                </HBox>
+            </VBox>
+            
+            <VBox spacing="5">
+                <Label text="Editor Code" style="-fx-font-weight: bold;"/>
+                <HBox spacing="5" alignment="CENTER_LEFT">
+                    <Label fx:id="editorCodeLabel" style="-fx-font-family: monospace; -fx-font-weight: bold;"/>
+                    <Button fx:id="copyEditorButton" text="Copy" onAction="#handleCopyEditorCode"/>
+                </HBox>
+            </VBox>
+            
+            <VBox spacing="5" VBox.vgrow="ALWAYS">
+                <Label text="Active Users" style="-fx-font-weight: bold;"/>
+                <ListView fx:id="userListView" VBox.vgrow="ALWAYS" styleClass="user-list-view"/>
+            </VBox>
+        </VBox>
+    </left>
+    
+    <center>
+        <BorderPane>
+            <center>
+                <HBox>
+                    <!-- Line numbers column -->
+                    <VBox fx:id="lineNumbersBox" style="-fx-background-color: #f8f8f8; -fx-padding: 5 10 5 5; -fx-alignment: top-right;">
+                        <Label text="1" style="-fx-font-family: 'Monospaced'; -fx-font-size: 14; -fx-text-fill: #888888;"/>
+                    </VBox>
+                    
+                    <!-- Text area -->
+                    <TextArea fx:id="textArea" style="-fx-font-family: 'Monospaced'; -fx-font-size: 14; -fx-padding: 5;" HBox.hgrow="ALWAYS" wrapText="true"/>
+                </HBox>
+            </center>
+        </BorderPane>
+    </center>
+</BorderPane>

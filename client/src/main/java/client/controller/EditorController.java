@@ -252,6 +252,24 @@ public class EditorController {
     }
 
     @FXML
+    private void handleUndo() {
+        // Your undo implementation
+    }
+
+    @FXML
+    private void handleRedo() {
+        // Your redo implementation
+    }
+
+    @FXML
+    private void handleCopyViewerCode() {
+    }
+
+    @FXML
+    private void handleCopyEditorCode() {
+    }
+
+    @FXML
     private void handleLeave() {
         mainApp.handleWindowClose();
         ((Stage) textArea.getScene().getWindow()).close();

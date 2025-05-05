@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.*?>
+
+<VBox xmlns="http://javafx.com/javafx/11.0.1" 
+     xmlns:fx="http://javafx.com/fxml/1" 
+     
+     spacing="20" 
+     alignment="CENTER" 
+     style="-fx-padding: 40;">
+     
+    <Label text="Collaborative Text Editor" style="-fx-font-size: 24; -fx-font-weight: bold;"/>
+    <VBox spacing="10" alignment="CENTER_LEFT">
+        <Label text="Start with:" style="-fx-font-weight: bold;"/>
+        <!-- <RadioButton text="Join a session" selected="true"/>
+        <RadioButton text="Open a new blank document"/>
+        <RadioButton text="Import a .txt file"/> -->
+    </VBox>
+    
+    <!-- <Button text="New Doc." onAction="#handleNewDoc" style="-fx-min-width: 200;"/> -->
+    <Button fx:id="newDocButton" text="New Document" onAction="#handleNewDoc" style="-fx-min-width: 200;"/>
+
+    <!-- <Button text="Browse..." onAction="#handleBrowse" style="-fx-min-width: 200;"/> -->
+    <Button fx:id="browseButton" text="Browse..." onAction="#handleBrowse" style="-fx-min-width: 200; "/>
+    
+    <VBox spacing="5">
+        <Label text="Session Code"/>
+        <TextField fx:id="sessionCodeField" style="-fx-min-width: 200;"/>
+        <Button text="Join" onAction="#handleJoin" style="-fx-min-width: 200;"/>
+    </VBox>
+</VBox>

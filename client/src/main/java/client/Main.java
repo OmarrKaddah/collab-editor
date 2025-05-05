@@ -38,43 +38,43 @@ public class Main extends Application {
 
     // UI Components
     @FXML
-    private Button newDocButton;
+    public Button newDocButton;
     @FXML
-    private Button browseButton;
+    public Button browseButton;
     @FXML
-    private TextField sessionCodeField;
+    public TextField sessionCodeField;
     @FXML
-    private Button joinButton;
+    public Button joinButton;
     @FXML
-    private ListView<String> activeSessionsListView;
+    public ListView<String> activeSessionsListView;
     @FXML
-    private VBox homeContainer;
+    public VBox homeContainer;
     @FXML
-    private HBox sessionCodeContainer;
+    public HBox sessionCodeContainer;
     @FXML
-    private Button copyEditorCodeButton;
+    public Button copyEditorCodeButton;
     @FXML
-    private Button copyViewerCodeButton;
+    public Button copyViewerCodeButton;
     @FXML
-    private Label editorCodeLabel;
+    public Label editorCodeLabel;
     @FXML
-    private Label viewerCodeLabel;
+    public Label viewerCodeLabel;
 
     // Application state
-    private StompSession stompSession;
-    private CRDTDocument document = new CRDTDocument();
-    private String clientId = UUID.randomUUID().toString().substring(0, 6);
-    private final AtomicInteger localCounter = new AtomicInteger(0);
-    private String currentSessionId;
-    private boolean isEditor = false;
-    private String username = "User_" + (int) (Math.random() * 1000);
-    private Map<String, CursorPosition> remoteCursors = new ConcurrentHashMap<>();
-    private Map<String, String> activeUsers = new ConcurrentHashMap<>();
-    private Timer cursorUpdateTimer;
+    public StompSession stompSession;
+    public CRDTDocument document = new CRDTDocument();
+    public String clientId = UUID.randomUUID().toString().substring(0, 6);
+    public final AtomicInteger localCounter = new AtomicInteger(0);
+    public String currentSessionId;
+    public boolean isEditor = false;
+    public String username = "User_" + (int) (Math.random() * 1000);
+    public Map<String, CursorPosition> remoteCursors = new ConcurrentHashMap<>();
+    public Map<String, String> activeUsers = new ConcurrentHashMap<>();
+    public Timer cursorUpdateTimer;
 
     // Constants
-    private static final String SERVER_WS_URL = "ws://localhost:8080/ws";
-    private static final long CURSOR_UPDATE_INTERVAL = 200; // ms
+    public static final String SERVER_WS_URL = "ws://localhost:8080/ws";
+    public static final long CURSOR_UPDATE_INTERVAL = 200; // ms
 
     @Override
     public void start(Stage stage) {
@@ -82,13 +82,11 @@ public class Main extends Application {
 
         try {
             // Load main UI
-            URL fxmlUrl = getClass().getResource("/client/primary.fxml");
-            if (fxmlUrl == null) {
-                throw new RuntimeException("FXML file not found");
-            }
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/client/primary.fxml"));
 
-            FXMLLoader loader = new FXMLLoader(fxmlUrl);
+            // Set Main instance as the controller
             loader.setController(this);
+
             Parent root = loader.load();
 
             // Setup UI
@@ -111,7 +109,7 @@ public class Main extends Application {
         }
     }
 
-    private void connectToServer() {
+    public void connectToServer() {
         WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
         stompClient.setMessageConverter(new MappingJackson2MessageConverter());
 
@@ -184,7 +182,7 @@ public class Main extends Application {
         });
     }
 
-    private void attemptReconnect() {
+    public void attemptReconnect() {
         System.out.println("Attempting to reconnect...");
         new Timer().schedule(new TimerTask() {
             @Override
@@ -195,29 +193,38 @@ public class Main extends Application {
     }
 
     @FXML
-    private void handleNewDoc() {
-        currentSessionId = generateSessionCode();
-        isEditor = true;
-        username = "User_" + (int) (Math.random() * 1000);
+    public void handleNewDoc() {
+        try {
+            System.out.println("Creating new document...1");
+            currentSessionId = generateSessionCode();
+            isEditor = true;
+            username = "User_" + (int) (Math.random() * 1000);
 
-        // Generate session codes
-        String editorCode = "#" + currentSessionId + "E";
-        String viewerCode = "#" + currentSessionId + "V";
+            System.out.println("Creating new document...2");
+            // Make sure these UI components are properly injected
+            if (editorCodeLabel != null && viewerCodeLabel != null && sessionCodeContainer != null) {
+                String editorCode = "#" + currentSessionId + "E";
+                String viewerCode = "#" + currentSessionId + "V";
 
-        // Show codes in UI
-        editorCodeLabel.setText(editorCode);
-        viewerCodeLabel.setText(viewerCode);
-        sessionCodeContainer.setVisible(true);
+                editorCodeLabel.setText(editorCode);
+                viewerCodeLabel.setText(viewerCode);
+                sessionCodeContainer.setVisible(true);
+            } else {
+                System.err.println("UI components not initialized!");
+            }
 
-        // Initialize empty document
-        document = new CRDTDocument();
+            System.out.println("Creating new document...3");
+            document = new CRDTDocument();
+            navigateToEditor();
 
-        // Navigate to editor
-        navigateToEditor();
+        } catch (Exception e) {
+            e.printStackTrace();
+            showError("Document Error", "Failed to create document: " + e.getMessage());
+        }
     }
 
     @FXML
-    private void handleBrowse() {
+    public void handleBrowse() {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Open Text File");
         fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text Files", "*.txt"));
@@ -262,7 +269,7 @@ public class Main extends Application {
     }
 
     @FXML
-    private void handleJoin() {
+    public void handleJoin() {
         String code = sessionCodeField.getText().trim();
         if (code.isEmpty()) {
             showError("Validation Error", "Please enter a session code");
@@ -290,16 +297,16 @@ public class Main extends Application {
     }
 
     @FXML
-    private void copyEditorCode() {
+    public void copyEditorCode() {
         copyToClipboard(editorCodeLabel.getText());
     }
 
     @FXML
-    private void copyViewerCode() {
+    public void copyViewerCode() {
         copyToClipboard(viewerCodeLabel.getText());
     }
 
-    private void copyToClipboard(String text) {
+    public void copyToClipboard(String text) {
         Clipboard clipboard = Clipboard.getSystemClipboard();
         ClipboardContent content = new ClipboardContent();
         content.putString(text);
@@ -312,8 +319,9 @@ public class Main extends Application {
         alert.showAndWait();
     }
 
-    private void navigateToEditor() {
+    public void navigateToEditor() {
         try {
+            System.out.println("Navigating to editor...00000000000000");
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/client/editor.fxml"));
             Parent root = loader.load();
 
@@ -335,7 +343,7 @@ public class Main extends Application {
         }
     }
 
-    private void handleDocumentUpdate(DocumentUpdateMessage msg) {
+    public void handleDocumentUpdate(DocumentUpdateMessage msg) {
         if (!msg.getSessionId().equals(currentSessionId))
             return;
 
@@ -351,7 +359,7 @@ public class Main extends Application {
         });
     }
 
-    private void handleCursorUpdate(CursorUpdateMessage msg) {
+    public void handleCursorUpdate(CursorUpdateMessage msg) {
         if (!msg.getSessionId().equals(currentSessionId))
             return;
 
@@ -368,7 +376,7 @@ public class Main extends Application {
         });
     }
 
-    private void handleUserPresenceUpdate(UserPresenceMessage msg) {
+    public void handleUserPresenceUpdate(UserPresenceMessage msg) {
         Platform.runLater(() -> {
             if (msg.isConnected()) {
                 activeUsers.put(msg.getUserId(), msg.getUsername());
@@ -383,7 +391,7 @@ public class Main extends Application {
         });
     }
 
-    private void startCursorUpdates() {
+    public void startCursorUpdates() {
         cursorUpdateTimer = new Timer(true);
         cursorUpdateTimer.scheduleAtFixedRate(new TimerTask() {
             @Override
@@ -408,7 +416,7 @@ public class Main extends Application {
         }, 0, CURSOR_UPDATE_INTERVAL);
     }
 
-    private void sendUserPresenceUpdate(boolean connected) {
+    public void sendUserPresenceUpdate(boolean connected) {
         if (stompSession != null && stompSession.isConnected()) {
             UserPresenceMessage msg = new UserPresenceMessage(
                     clientId,
@@ -426,19 +434,19 @@ public class Main extends Application {
         }
     }
 
-    private void updateTextArea() {
+    public void updateTextArea() {
         // This would be called by the EditorController to update its text area
     }
 
-    private void updateRemoteCursors() {
+    public void updateRemoteCursors() {
         // This would be handled by the EditorController to draw remote cursors
     }
 
-    private void updateActiveUsersList() {
+    public void updateActiveUsersList() {
         // This would update the user list in the EditorController
     }
 
-    private int getCurrentCaretPosition() {
+    public int getCurrentCaretPosition() {
         // This would be implemented in EditorController
         return 0;
     }
@@ -464,7 +472,7 @@ public class Main extends Application {
         }
     }
 
-    private String generateSessionCode() {
+    public String generateSessionCode() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 6; i++) {
@@ -473,7 +481,7 @@ public class Main extends Application {
         return sb.toString();
     }
 
-    private void showError(String title, String message) {
+    public void showError(String title, String message) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.ERROR);
             alert.setTitle(title);
@@ -496,7 +504,7 @@ public class Main extends Application {
         return getColorForUser(userId);
     }
 
-    private String getColorForUser(String userId) {
+    public String getColorForUser(String userId) {
         // Simple hash-based color generation
         int hash = userId.hashCode();
         return String.format("#%06X", (hash & 0x00FFFFFF));

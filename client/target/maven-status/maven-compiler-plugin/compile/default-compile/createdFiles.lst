@@ -1,5 +1,7 @@
-client\Main$1$1.class
-client\model\CRDTMessage.class
+client\controller\PrimaryController.class
 client\Main$1.class
-client\Main.class
 client\model\CRDTCharacter.class
+client\model\CRDTMessage.class
+client\controller\EditorController$1.class
+client\Main$1$1.class
+client\Main.class

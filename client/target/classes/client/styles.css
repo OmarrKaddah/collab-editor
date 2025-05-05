@@ -1,0 +1,25 @@
+/* styles.css */
+.user-list-view .list-cell {
+    -fx-padding: 8px;
+    -fx-background-color: transparent;
+}
+
+.user-list-view .list-cell:filled:selected {
+    -fx-background-color: #e0e0e0;
+}
+
+.user-list-view .list-cell:filled:hover {
+    -fx-background-color: #f0f0f0;
+}
+
+.user-icon {
+    -fx-fill: #666666;
+    -fx-font-size: 12px;
+}
+
+.line-number {
+    -fx-text-fill: #888888;
+    -fx-font-family: 'Monospaced';
+    -fx-font-size: 14px;
+    -fx-padding: 0 5 0 0;
+}
