@@ -24,6 +24,8 @@ import javafx.util.Duration;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.messaging.converter.MappingJackson2MessageConverter;
 import org.springframework.messaging.simp.stomp.*;
 import org.springframework.util.concurrent.ListenableFuture;
@@ -36,12 +38,15 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class Main extends Application {
+    String connectUrl = "ws://localhost:8080/ws";
 
     private StompSession stompSession;
     private TextArea textArea;
     private String lastOperationType = "remote"; // or "none"
     private String documentId = null;
-
+    private Runnable onConnectedCallback = null;
+    private String importedParenId = null;
+    private String lastImportedId = null;
     private String clientId = null;
     private final AtomicLong lastTimestamp = new AtomicLong(0);
 
@@ -95,7 +100,28 @@ public class Main extends Application {
         Button createButton = new Button("Create New Document");
         createButton.setOnAction(e -> {
             documentId = generateDocumentId();
-            showEditorScreen(stage);
+            System.out.println("Creating new document: " + documentId);
+
+            connectToServer(); // connect first so you can send
+
+            // Delay a bit to ensure connection is established
+            new Timer().schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    if (stompSession != null && stompSession.isConnected()) {
+                        String destination = "/app/create/" + documentId;
+                        System.out.println("Requesting creation at: " + destination);
+                        stompSession.send(destination, null);
+                    }
+
+                    // UI update (JavaFX must run on main thread)
+                    Platform.runLater(() -> {
+                        showEditorScreen(stage);
+                        localVisibleChars.clear();
+                        updateTextFromCRDT();
+                    });
+                }
+            }, 500); // 0.5s delay
         });
 
         // New Import Button
@@ -111,31 +137,48 @@ public class Main extends Application {
                 try {
                     String content = new String(Files.readAllBytes(selectedFile.toPath()));
                     documentId = generateDocumentId();
-                    showEditorScreen(stage);
 
-                    // After editor screen is shown, insert the file content properly
-                    Platform.runLater(() -> {
-                        // Clear any existing content
+                    // ✅ Set the import logic as a callback to run after connection is ready
+                    onConnectedCallback = () -> {
                         localVisibleChars.clear();
                         updateTextFromCRDT();
 
-                        // Insert all characters with proper parent references
-                        String parentId = "HEAD";
                         for (char c : content.toCharArray()) {
                             if (c >= 32) { // Only insert printable characters
+                                if (importedParenId == null) {
+                                    importedParenId = "HEAD"; // First character has no parent
+                                } else {
+                                    importedParenId = lastImportedId;
+                                }
+
                                 String newId = generateUniqueId();
-                                CRDTCharacter newChar = new CRDTCharacter(c, newId, parentId, true);
+                                lastImportedId = newId;
+                                CRDTCharacter newChar = new CRDTCharacter(c, newId, importedParenId, true);
                                 localVisibleChars.add(newChar);
-                                parentId = newId; // Set next parent to current character
+
+                                System.out.println("New char: " + c + " -> " + newId);
+                                System.out.println("Parent ID: " + importedParenId);
 
                                 // Send insert message to server
                                 CRDTMessage msg = new CRDTMessage("insert", newChar);
                                 sendMessage(msg);
+                                System.out.println("Imported char: " + c + " -> " + newId);
+                                try {
+                                    Thread.sleep(20); // Optional delay for smoother import
+                                } catch (InterruptedException ex) {
+                                    Thread.currentThread().interrupt(); // Restore interrupted status
+                                    System.err.println("Thread was interrupted: " + ex.getMessage());
+                                }
                             }
                         }
+
                         lastOperationType = "remote";
                         updateTextFromCRDT();
-                    });
+                    };
+
+                    // ✅ Show the editor, which will also call connectToServer() internally
+                    showEditorScreen(stage);
+
                 } catch (IOException ex) {
                     showError("Failed to read file: " + ex.getMessage());
                 }
@@ -148,16 +191,50 @@ public class Main extends Application {
 
         joinButton.setOnAction(e -> {
             String inputId = docIdField.getText().trim();
-            if (inputId.matches("\\d{5}[VE]")) {
-                documentId = inputId.substring(0, 5);
-                if (inputId.endsWith("E")) {
-                    showEditorScreen(stage);
-                } else {
-                    showViewerScreen(stage);
-                }
-            } else {
+            if (!inputId.matches("\\d{5}[VE]")) {
                 showError("Please enter a valid 5-digit ID ending with V or E");
+                return;
             }
+
+            documentId = inputId.substring(0, 5);
+            String mode = inputId.endsWith("E") ? "editor" : "viewer";
+
+            WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
+            stompClient.setMessageConverter(new MappingJackson2MessageConverter());
+
+            stompClient.connect("ws://localhost:8080/ws", new StompSessionHandlerAdapter() {
+                @Override
+                public void afterConnected(StompSession session, StompHeaders connectedHeaders) {
+                    System.out.println("Checking server for document: " + documentId);
+                    // Subscribe for the response
+                    session.subscribe("/user/queue/exists", new StompFrameHandler() {
+                        @Override
+                        public Type getPayloadType(StompHeaders headers) {
+                            return Boolean.class;
+                        }
+
+                        @Override
+                        public void handleFrame(StompHeaders headers, Object payload) {
+                            boolean exists = (Boolean) payload;
+                            Platform.runLater(() -> {
+                                if (!exists) {
+                                    showError("❌ Document not found. Please check your ID.");
+                                    // optionally reset the view here if needed
+                                } else {
+                                    if (inputId.endsWith("E")) {
+                                        showEditorScreen(stage);
+                                    } else {
+                                        showViewerScreen(stage);
+                                    }
+                                }
+                            });
+                        }
+                    });
+
+                    // Request the existence check
+                    session.send("/app/exists/" + documentId, null);
+                }
+            });
         });
 
         selectionScreen.getChildren().addAll(title, createButton, importButton, docIdField, joinButton);
@@ -291,17 +368,16 @@ public class Main extends Application {
         WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
         stompClient.setMessageConverter(new MappingJackson2MessageConverter());
 
-        String connectUrl = "ws://localhost:8080/ws";
-        if (documentId != null) {
-            connectUrl += "?docId=" + documentId;
-        }
+        System.out.println("Connecting to document: " + documentId); // Debug log
 
         ListenableFuture<StompSession> future = stompClient.connect(connectUrl, new StompSessionHandlerAdapter() {
             @Override
             public void afterConnected(StompSession session, StompHeaders connectedHeaders) {
                 stompSession = session;
+                String subscriptionTopic = "/topic/updates/" + documentId;
+                System.out.println("Subscribing to: " + subscriptionTopic);
 
-                session.subscribe("/topic/updates/" + documentId, new StompFrameHandler() {
+                session.subscribe(subscriptionTopic, new StompFrameHandler() {
                     @Override
                     public Type getPayloadType(StompHeaders headers) {
                         return CRDTMessage.class;
@@ -309,15 +385,50 @@ public class Main extends Application {
 
                     @Override
                     public void handleFrame(StompHeaders headers, Object payload) {
+                        System.out.println("Received update for doc " + documentId);
                         if (payload instanceof CRDTMessage msg) {
                             Platform.runLater(() -> applyServerUpdate(msg));
                         }
                     }
                 });
+
+                session.subscribe("/user/queue/sync", new StompFrameHandler() {
+                    @Override
+                    public Type getPayloadType(StompHeaders headers) {
+                        return CRDTMessage[].class; // ✅ Fix: use array
+                    }
+
+                    @Override
+                    public void handleFrame(StompHeaders headers, Object payload) {
+                        CRDTMessage[] messages = (CRDTMessage[]) payload; // ✅ cast to array
+                        Platform.runLater(() -> {
+                            for (CRDTMessage msg : messages) {
+                                applyServerUpdate(msg);
+                            }
+                        });
+                    }
+                });
+                if (onConnectedCallback != null) {
+                    Platform.runLater(onConnectedCallback);
+                    onConnectedCallback = null; // prevent repeated calls
+                }
+
+                String syncDest = "/app/sync/" + documentId;
+                System.out.println("📨 Requesting sync: " + syncDest);
+                session.send(syncDest, null);
+
             }
 
             @Override
             public void handleTransportError(StompSession session, Throwable ex) {
+                System.err.println("Transport error: " + ex.getMessage());
+                ex.printStackTrace();
+            }
+
+            @Override
+            public void handleException(StompSession session, StompCommand command,
+                    StompHeaders headers, byte[] payload, Throwable ex) {
+                System.err.println("STOMP exception: " + ex.getMessage());
                 ex.printStackTrace();
             }
         });
@@ -532,8 +643,13 @@ public class Main extends Application {
     }
 
     private void sendMessage(CRDTMessage msg) {
+        System.out.println("Will Send Message");
         if (stompSession != null && stompSession.isConnected()) {
-            stompSession.send("/app/edit", msg);
+            System.out.println("Sending message: " + msg.getType() + " with ID: " + msg.getCharacter().getId());
+            // Add document ID to the send destination
+            String sendDestination = "/app/edit/" + documentId;
+            System.out.println("Sending to: " + sendDestination);
+            stompSession.send(sendDestination, msg);
         }
     }
 
