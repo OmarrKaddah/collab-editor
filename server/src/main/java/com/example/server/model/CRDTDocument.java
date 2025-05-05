@@ -50,23 +50,23 @@ public class CRDTDocument {
 
     private void insertCharacter(CRDTCharacter newChar) {
         if (idMap.containsKey(newChar.getId())) return;
-        //parent id gaya men el client dummy
-
-        System.out.println("Insert in document: " + newChar.getValue() + " after " + newChar.getParentId());
+    
         String parentId = newChar.getParentId();
-        System.out.println("character ID: " + newChar.getId());
-        System.out.println("Parent ID: " + parentId);
         tree.putIfAbsent(parentId, new ArrayList<>());
-
+    
         List<CRDTCharacter> siblings = tree.get(parentId);
-        int insertIdx = 0;
-        while (insertIdx < siblings.size() && siblings.get(insertIdx).getId().compareTo(newChar.getId()) < 0) {
-            insertIdx++;
-        }
-        siblings.add(insertIdx, newChar);
+        siblings.add(newChar);
+    
+        // Sort based on timestamp then client ID
+        siblings.sort(Comparator.comparing((CRDTCharacter ch) -> {
+            String[] parts = ch.getId().split("_");
+            return Long.parseLong(parts[1]);
+        }).thenComparing(ch -> ch.getId()));
+        
         idMap.put(newChar.getId(), newChar);
         tree.put(newChar.getId(), new ArrayList<>());
     }
+    
 
     private void deleteCharacter(String id) {
         CRDTCharacter ch = idMap.get(id);
