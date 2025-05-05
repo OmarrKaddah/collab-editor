@@ -323,9 +323,6 @@ public class Main extends Application {
             }
         });
 
-        // Handle Ctrl+V for paste and Ctrl+Z/Y for undo/redo
-        textArea.setOnKeyPressed(event -> handleKeyPress(event));
-
         // ➕ ADD this block for paste handling
         textArea.setOnKeyPressed(event -> {
             if (event.isControlDown() && event.getCode().toString().equals("V")) {
@@ -338,7 +335,8 @@ public class Main extends Application {
                 }
             }
         });
-
+        // Handle Ctrl+V for paste and Ctrl+Z/Y for undo/redo
+        textArea.setOnKeyPressed(event -> handleKeyPress(event));
         Platform.runLater(() -> textArea.requestFocus());
     }
 
