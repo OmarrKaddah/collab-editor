@@ -145,7 +145,12 @@ private void pasteTextAtCaret(String pastedText, int caretPos) {
 
     for (char c : pastedText.toCharArray()) {
         if (c < 32 && c != '\n') continue;
-
+        try {
+            Thread.sleep(10); // Simulate network delay
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); // Restore interrupted status
+            e.printStackTrace();
+        }
         parentId = sendInsertAt(c, parentId); // parentId gets updated each time
     }
 
