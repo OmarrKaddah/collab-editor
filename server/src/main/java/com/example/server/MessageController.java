@@ -3,6 +3,8 @@ package com.example.server;
 import com.example.server.model.CRDTCharacter;
 import com.example.server.model.CRDTDocument;
 import com.example.server.model.CRDTMessage;
+import com.example.server.model.CursorUpdate;
+import com.example.server.service.CursorService;
 import com.example.server.service.DocumentService;
 import com.example.server.service.UserSessionService;
 
@@ -28,10 +30,14 @@ public class MessageController {
 
     private final UserSessionService userSessionService;
 
+    private CursorService cursorService;
+
     @Autowired
     public MessageController(SimpMessagingTemplate messagingTemplate,
             DocumentService documentService,
-            UserSessionService userSessionService) {
+            UserSessionService userSessionService,
+            CursorService cursorService) {
+        this.cursorService = cursorService;
         this.messagingTemplate = messagingTemplate;
         this.documentService = documentService;
         this.userSessionService = userSessionService;
@@ -112,12 +118,20 @@ public class MessageController {
     @MessageMapping("/leave/{docId}")
     public void handleLeave(@DestinationVariable String docId, @Payload String username) {
         userSessionService.removeUser(docId, username);
+        cursorService.removeCursor(docId, username);
         broadcastUserList(docId);
+
     }
 
     private void broadcastUserList(String docId) {
         String[] users = userSessionService.getUsers(docId);
         messagingTemplate.convertAndSend("/topic/users/" + docId, users);
+    }
+
+    @MessageMapping("/cursor/{docId}")
+    public void handleCursorUpdate(@DestinationVariable String docId, @Payload CursorUpdate update) {
+        cursorService.updateCursor(docId, update.getUsername(), update.getPosition());
+        messagingTemplate.convertAndSend("/topic/cursors/" + docId, update);
     }
 
 }

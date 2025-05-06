@@ -268,11 +268,18 @@ public class Main extends Application {
         userListView.setPrefWidth(150);
         userListView.setEditable(false);
 
-        // Create a split pane for viewer and user list
+        // ✅ Create export button
+        Button exportButton = new Button("Export to File");
+        exportButton.setOnAction(e -> exportToFile(stage));
+
+        // ✅ Create a split pane for viewer and user list
         SplitPane splitPane = new SplitPane();
         splitPane.setDividerPositions(0.8); // 80% for viewer, 20% for user list
 
-        VBox viewerBox = new VBox(textArea);
+        // ✅ Layout for the viewer with export
+        VBox viewerBox = new VBox(10, textArea, exportButton);
+        viewerBox.setStyle("-fx-padding: 10;");
+
         VBox userListBox = new VBox(new Label("Connected Users:"), userListView);
         userListBox.setStyle("-fx-padding: 10;");
 
@@ -290,6 +297,7 @@ public class Main extends Application {
             }
         });
 
+        // Connect to the server and populate user list
         connectToServer(userListView);
     }
 
@@ -303,6 +311,10 @@ public class Main extends Application {
         ListView<String> userListView = new ListView<>();
         userListView.setPrefWidth(150);
         userListView.setEditable(false);
+
+        // Create export button
+        Button exportButton = new Button("Export to File");
+        exportButton.setOnAction(e -> exportToFile(stage));
 
         // Create copyable document code display (only in editor mode)
         TextField codeVField = new TextField(documentId + "V");
@@ -323,8 +335,8 @@ public class Main extends Application {
 
         HBox codeVBox = new HBox(5, new Label("Viewer Code:"), codeVField, copyVButton);
         HBox codeEBox = new HBox(5, new Label("Editor Code:"), codeEField, copyEButton);
-
-        VBox codeBox = new VBox(5, codeVBox, codeEBox);
+        HBox exportBox = new HBox(5, new Label("Export:"), exportButton);
+        VBox codeBox = new VBox(5, codeVBox, codeEBox, exportBox); // Add exportBox here
         codeBox.setStyle("-fx-padding: 10; -fx-background-color: #f0f0f0;");
 
         // Create a split pane for editor and user list
@@ -726,6 +738,32 @@ public class Main extends Application {
             }
         }
         System.out.println("---");
+    }
+
+    private void exportToFile(Stage stage) {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Save Document");
+        fileChooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("Text Files", "*.txt"));
+
+        // Set default filename with document ID
+        fileChooser.setInitialFileName("document_" + documentId + ".txt");
+
+        File file = fileChooser.showSaveDialog(stage);
+        if (file != null) {
+            try {
+                // Get the current text from the CRDT state
+                String content = buildVisibleText();
+
+                // Write to file
+                Files.write(file.toPath(), content.getBytes());
+
+                // Show success notification
+                showCopiedNotification("Document exported successfully!");
+            } catch (IOException ex) {
+                showError("Failed to export document: " + ex.getMessage());
+            }
+        }
     }
 
     private void sendInsert(char c) {
