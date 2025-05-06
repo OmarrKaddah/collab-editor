@@ -8,6 +8,8 @@ import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.input.Clipboard;
@@ -110,7 +112,8 @@ public class Main extends Application {
             documentId = generateDocumentId();
             System.out.println("Creating new document: " + documentId);
 
-            connectToServer(); // connect first so you can send
+            ListView<String> emptyUserList = new ListView<>();
+            connectToServer(emptyUserList);
 
             // Delay a bit to ensure connection is established
             new Timer().schedule(new TimerTask() {
@@ -119,7 +122,8 @@ public class Main extends Application {
                     if (stompSession != null && stompSession.isConnected()) {
                         String destination = "/app/create/" + documentId;
                         System.out.println("Requesting creation at: " + destination);
-                        stompSession.send(destination, null);
+                        stompSession.send(destination, clientId);
+
                     }
 
                     // UI update (JavaFX must run on main thread)
@@ -257,15 +261,36 @@ public class Main extends Application {
         textArea = new TextArea();
         textArea.setPromptText("Waiting for document content...");
         textArea.setWrapText(true);
-        textArea.setEditable(false); // Viewer cannot edit
+        textArea.setEditable(false);
 
-        // No document code shown in viewer mode
-        VBox root = new VBox(textArea);
-        Scene viewerScene = new Scene(root, 600, 400);
-        stage.setTitle("Viewing Document | User: " + clientId); // No doc ID in title
+        // Create user list view
+        ListView<String> userListView = new ListView<>();
+        userListView.setPrefWidth(150);
+        userListView.setEditable(false);
+
+        // Create a split pane for viewer and user list
+        SplitPane splitPane = new SplitPane();
+        splitPane.setDividerPositions(0.8); // 80% for viewer, 20% for user list
+
+        VBox viewerBox = new VBox(textArea);
+        VBox userListBox = new VBox(new Label("Connected Users:"), userListView);
+        userListBox.setStyle("-fx-padding: 10;");
+
+        splitPane.getItems().addAll(viewerBox, userListBox);
+
+        Scene viewerScene = new Scene(splitPane, 800, 500);
+        stage.setTitle("Viewing Document: " + documentId + " | User: " + clientId);
         stage.setScene(viewerScene);
 
-        connectToServer();
+        // Handle window close
+        stage.setOnCloseRequest(event -> {
+            if (stompSession != null && stompSession.isConnected()) {
+                stompSession.send("/app/leave/" + documentId, clientId);
+                stompSession.disconnect();
+            }
+        });
+
+        connectToServer(userListView);
     }
 
     private void showEditorScreen(Stage stage) {
@@ -273,6 +298,11 @@ public class Main extends Application {
         textArea.setPromptText("Start typing...");
         textArea.setWrapText(true);
         textArea.setEditable(true);
+
+        // Create user list view
+        ListView<String> userListView = new ListView<>();
+        userListView.setPrefWidth(150);
+        userListView.setEditable(false);
 
         // Create copyable document code display (only in editor mode)
         TextField codeVField = new TextField(documentId + "V");
@@ -297,12 +327,21 @@ public class Main extends Application {
         VBox codeBox = new VBox(5, codeVBox, codeEBox);
         codeBox.setStyle("-fx-padding: 10; -fx-background-color: #f0f0f0;");
 
-        VBox root = new VBox(codeBox, textArea);
-        Scene editorScene = new Scene(root, 600, 400);
+        // Create a split pane for editor and user list
+        SplitPane splitPane = new SplitPane();
+        splitPane.setDividerPositions(0.8); // 80% for editor, 20% for user list
+
+        VBox editorBox = new VBox(codeBox, textArea);
+        VBox userListBox = new VBox(new Label("Connected Users:"), userListView);
+        userListBox.setStyle("-fx-padding: 10;");
+
+        splitPane.getItems().addAll(editorBox, userListBox);
+
+        Scene editorScene = new Scene(splitPane, 800, 500); // Increased width to accommodate user list
         stage.setTitle("Editing Document: " + documentId + " | User: " + clientId);
         stage.setScene(editorScene);
 
-        connectToServer();
+        connectToServer(userListView);
 
         // Handle input
         textArea.setOnKeyTyped(event -> {
@@ -320,6 +359,12 @@ public class Main extends Application {
                 sendInsert('\n');
             } else if (typed.length() > 0 && typed.charAt(0) >= 32) {
                 sendInsert(typed.charAt(0));
+            }
+        });
+        stage.setOnCloseRequest(event -> {
+            if (stompSession != null && stompSession.isConnected()) {
+                stompSession.send("/app/leave/" + documentId, clientId);
+                stompSession.disconnect();
             }
         });
 
@@ -414,7 +459,7 @@ public class Main extends Application {
         delay.play();
     }
 
-    private void connectToServer() {
+    private void connectToServer(ListView<String> userListView) {
         WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
         stompClient.setMessageConverter(new MappingJackson2MessageConverter());
 
@@ -458,6 +503,24 @@ public class Main extends Application {
                         });
                     }
                 });
+
+                String userListTopic = "/topic/users/" + documentId;
+                session.subscribe(userListTopic, new StompFrameHandler() {
+                    @Override
+                    public Type getPayloadType(StompHeaders headers) {
+                        return String[].class;
+                    }
+
+                    @Override
+                    public void handleFrame(StompHeaders headers, Object payload) {
+                        String[] users = (String[]) payload;
+                        Platform.runLater(() -> {
+                            userListView.getItems().setAll(users);
+                        });
+                    }
+                });
+                session.send("/app/join/" + documentId, clientId);
+
                 if (onConnectedCallback != null) {
                     Platform.runLater(onConnectedCallback);
                     onConnectedCallback = null; // prevent repeated calls

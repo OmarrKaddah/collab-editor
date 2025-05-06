@@ -4,6 +4,7 @@ import com.example.server.model.CRDTCharacter;
 import com.example.server.model.CRDTDocument;
 import com.example.server.model.CRDTMessage;
 import com.example.server.service.DocumentService;
+import com.example.server.service.UserSessionService;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
@@ -25,10 +26,15 @@ public class MessageController {
 
     private final SimpMessagingTemplate messagingTemplate;
 
+    private final UserSessionService userSessionService;
+
     @Autowired
-    public MessageController(SimpMessagingTemplate messagingTemplate, DocumentService documentService) {
+    public MessageController(SimpMessagingTemplate messagingTemplate,
+            DocumentService documentService,
+            UserSessionService userSessionService) {
         this.messagingTemplate = messagingTemplate;
         this.documentService = documentService;
+        this.userSessionService = userSessionService;
     }
 
     @MessageMapping("/edit/{docId}")
@@ -95,6 +101,23 @@ public class MessageController {
         boolean x = documentService.exists(docId);
         System.out.println("Document " + (x ? "exists" : "does not exist") + ": " + docId);
         return x;
+    }
+
+    @MessageMapping("/join/{docId}")
+    public void handleJoin(@DestinationVariable String docId, @Payload String username) {
+        userSessionService.addUser(docId, username);
+        broadcastUserList(docId);
+    }
+
+    @MessageMapping("/leave/{docId}")
+    public void handleLeave(@DestinationVariable String docId, @Payload String username) {
+        userSessionService.removeUser(docId, username);
+        broadcastUserList(docId);
+    }
+
+    private void broadcastUserList(String docId) {
+        String[] users = userSessionService.getUsers(docId);
+        messagingTemplate.convertAndSend("/topic/users/" + docId, users);
     }
 
 }
