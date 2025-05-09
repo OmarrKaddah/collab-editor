@@ -43,23 +43,6 @@ A real-time collaborative plain text editor built using **JavaFX** (frontend) an
 
 ---
 
-## Project Structure
-
-```
-collaborative-editor/
-âââ server/               # Spring Boot backend
-â   âââ src/
-â   âââ pom.xml
-â
-âââ client/               # JavaFX frontend
-â   âââ src/
-â   âââ pom.xml
-â
-âââ README.md
-âââ members.txt
-```
-
----
 
 ## Getting Started
 
